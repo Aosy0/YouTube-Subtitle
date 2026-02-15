@@ -58,6 +58,8 @@
     const Logger = {
         levels: { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 },
         currentLevel: 1,
+        logs: [],
+        maxLogs: 1000,
 
         setLevel(level) {
             this.currentLevel = level;
@@ -67,6 +69,20 @@
             if (level >= this.currentLevel) {
                 const prefix = `[YSE-${CONFIG.VERSION}]`;
                 const levelName = Object.keys(this.levels).find(k => this.levels[k] === level);
+                const timestamp = new Date().toISOString();
+                const logEntry = {
+                    timestamp,
+                    level: levelName,
+                    message: message,
+                    args: args
+                };
+                
+                // ログを配列に保存
+                this.logs.push(logEntry);
+                if (this.logs.length > this.maxLogs) {
+                    this.logs.shift();
+                }
+                
                 console.log(`${prefix} [${levelName}] ${message}`, ...args);
             }
         },
@@ -74,7 +90,36 @@
         debug(message, ...args) { this.log(this.levels.DEBUG, message, ...args); },
         info(message, ...args) { this.log(this.levels.INFO, message, ...args); },
         warn(message, ...args) { this.log(this.levels.WARN, message, ...args); },
-        error(message, ...args) { this.log(this.levels.ERROR, message, ...args); }
+        error(message, ...args) { this.log(this.levels.ERROR, message, ...args); },
+
+        getLogs() {
+            return this.logs;
+        },
+
+        clearLogs() {
+            this.logs = [];
+        },
+
+        exportLogs() {
+            const logText = this.logs.map(log => {
+                const argsStr = log.args.length > 0 ? ' ' + JSON.stringify(log.args) : '';
+                return `[${log.timestamp}] [${log.level}] ${log.message}${argsStr}`;
+            }).join('\n');
+            return logText;
+        },
+
+        downloadLogs() {
+            const logText = this.exportLogs();
+            const blob = new Blob([logText], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `yse-logs-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
     };
 
     // ============================================
@@ -124,6 +169,278 @@
             this.save();
             Logger.info('設定をデフォルトにリセットしました');
         },
+    };
+
+    // ============================================
+    // ログパネルモジュール
+    // ============================================
+    const LogPanel = {
+        panel: null,
+        isVisible: false,
+        autoRefreshInterval: null,
+
+        init() {
+            this.createPanel();
+            this.setupKeyboardShortcut();
+            Logger.info('ログパネルを初期化しました');
+        },
+
+        createPanel() {
+            this.panel = document.createElement('div');
+            this.panel.id = 'yse-log-panel';
+            this.panel.className = 'yse-log-panel';
+            this.panel.style.cssText = `
+                position: fixed;
+                bottom: 10px;
+                right: 10px;
+                width: 600px;
+                height: 400px;
+                background: rgba(0, 0, 0, 0.95);
+                border: 1px solid #444;
+                border-radius: 8px;
+                z-index: 10001;
+                display: none;
+                flex-direction: column;
+                font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+                font-size: 12px;
+                color: #fff;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            `;
+
+            this.panel.innerHTML = `
+                <div style="
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 10px 15px;
+                    border-bottom: 1px solid #444;
+                    background: rgba(255, 255, 255, 0.05);
+                    border-radius: 8px 8px 0 0;
+                ">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-weight: bold; color: #3ea6ff;">YSE Debug Logs</span>
+                        <span id="yse-log-count" style="color: #888; font-size: 11px;">(0 logs)</span>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button id="yse-log-refresh" style="
+                            background: #3ea6ff;
+                            border: none;
+                            color: #000;
+                            padding: 4px 12px;
+                            border-radius: 4px;
+                            cursor: pointer;
+                            font-size: 11px;
+                            font-weight: bold;
+                        ">更新</button>
+                        <button id="yse-log-clear" style="
+                            background: #666;
+                            border: none;
+                            color: #fff;
+                            padding: 4px 12px;
+                            border-radius: 4px;
+                            cursor: pointer;
+                            font-size: 11px;
+                        ">クリア</button>
+                        <button id="yse-log-download" style="
+                            background: #4ade80;
+                            border: none;
+                            color: #000;
+                            padding: 4px 12px;
+                            border-radius: 4px;
+                            cursor: pointer;
+                            font-size: 11px;
+                            font-weight: bold;
+                        ">ダウンロード</button>
+                        <button id="yse-log-close" style="
+                            background: transparent;
+                            border: none;
+                            color: #fff;
+                            font-size: 18px;
+                            cursor: pointer;
+                            padding: 0 5px;
+                        ">×</button>
+                    </div>
+                </div>
+                <div id="yse-log-content" style="
+                    flex: 1;
+                    overflow-y: auto;
+                    padding: 10px;
+                    background: rgba(0, 0, 0, 0.8);
+                "></div>
+                <div style="
+                    padding: 8px 15px;
+                    border-top: 1px solid #444;
+                    background: rgba(255, 255, 255, 0.05);
+                    border-radius: 0 0 8px 8px;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    font-size: 11px;
+                    color: #888;
+                ">
+                    <span>ショートカット: Ctrl+Shift+L (表示/非表示)</span>
+                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                        <input type="checkbox" id="yse-log-autorefresh" style="cursor: pointer;">
+                        <span>自動更新</span>
+                    </label>
+                </div>
+            `;
+
+            document.body.appendChild(this.panel);
+
+            // イベントリスナー
+            this.panel.querySelector('#yse-log-close').addEventListener('click', () => this.hide());
+            this.panel.querySelector('#yse-log-clear').addEventListener('click', () => this.clearLogs());
+            this.panel.querySelector('#yse-log-download').addEventListener('click', () => this.downloadLogs());
+            this.panel.querySelector('#yse-log-refresh').addEventListener('click', () => this.refresh());
+            
+            const autoRefreshCheckbox = this.panel.querySelector('#yse-log-autorefresh');
+            autoRefreshCheckbox.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    this.startAutoRefresh();
+                } else {
+                    this.stopAutoRefresh();
+                }
+            });
+
+            // ドラッグ機能
+            this.makeDraggable();
+        },
+
+        makeDraggable() {
+            const header = this.panel.querySelector('div:first-child');
+            let isDragging = false;
+            let startX, startY, startLeft, startTop;
+
+            header.addEventListener('mousedown', (e) => {
+                if (e.target.tagName === 'BUTTON') return;
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                const rect = this.panel.getBoundingClientRect();
+                startLeft = rect.left;
+                startTop = rect.top;
+                this.panel.style.cursor = 'grabbing';
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                this.panel.style.left = `${startLeft + dx}px`;
+                this.panel.style.top = `${startTop + dy}px`;
+                this.panel.style.right = 'auto';
+                this.panel.style.bottom = 'auto';
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    this.panel.style.cursor = 'default';
+                }
+            });
+        },
+
+        setupKeyboardShortcut() {
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.shiftKey && e.key === 'L') {
+                    e.preventDefault();
+                    this.toggle();
+                }
+            });
+        },
+
+        show() {
+            this.panel.style.display = 'flex';
+            this.isVisible = true;
+            this.refresh();
+            Logger.info('ログパネルを表示しました');
+        },
+
+        hide() {
+            this.panel.style.display = 'none';
+            this.isVisible = false;
+            this.stopAutoRefresh();
+        },
+
+        toggle() {
+            if (this.isVisible) {
+                this.hide();
+            } else {
+                this.show();
+            }
+        },
+
+        refresh() {
+            const content = this.panel.querySelector('#yse-log-content');
+            const logs = Logger.getLogs();
+            const countSpan = this.panel.querySelector('#yse-log-count');
+            
+            countSpan.textContent = `(${logs.length} logs)`;
+            
+            if (logs.length === 0) {
+                content.innerHTML = '<div style="color: #666; text-align: center; padding: 20px;">ログがありません</div>';
+                return;
+            }
+
+            content.innerHTML = logs.map(log => {
+                const color = {
+                    'DEBUG': '#888',
+                    'INFO': '#3ea6ff',
+                    'WARN': '#fbbf24',
+                    'ERROR': '#ef4444'
+                }[log.level] || '#fff';
+
+                const argsStr = log.args.length > 0 ? ' ' + JSON.stringify(log.args).substring(0, 100) : '';
+                const time = new Date(log.timestamp).toLocaleTimeString('ja-JP');
+                
+                return `<div style="
+                    margin-bottom: 4px;
+                    border-left: 3px solid ${color};
+                    padding-left: 8px;
+                    word-break: break-all;
+                ">
+                    <span style="color: #666;">[${time}]</span>
+                    <span style="color: ${color}; font-weight: bold;">[${log.level}]</span>
+                    <span>${this.escapeHtml(log.message)}${this.escapeHtml(argsStr)}</span>
+                </div>`;
+            }).join('');
+
+            // 最新のログにスクロール
+            content.scrollTop = content.scrollHeight;
+        },
+
+        escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        },
+
+        clearLogs() {
+            Logger.clearLogs();
+            this.refresh();
+            Logger.info('ログをクリアしました');
+        },
+
+        downloadLogs() {
+            Logger.downloadLogs();
+            Logger.info('ログをダウンロードしました');
+        },
+
+        startAutoRefresh() {
+            this.autoRefreshInterval = setInterval(() => {
+                if (this.isVisible) {
+                    this.refresh();
+                }
+            }, 1000);
+        },
+
+        stopAutoRefresh() {
+            if (this.autoRefreshInterval) {
+                clearInterval(this.autoRefreshInterval);
+                this.autoRefreshInterval = null;
+            }
+        }
 
         export() {
             return JSON.stringify(this.data, null, 2);
@@ -937,6 +1254,7 @@
 
         setupMenuCommands() {
             GM_registerMenuCommand('設定を開く', () => this.openSettings());
+            GM_registerMenuCommand('ログパネルを開く', () => LogPanel.show());
             GM_registerMenuCommand('字幕を自動選択', () => {
                 PlayerController.autoSelectSubtitle();
             });
@@ -1144,7 +1462,18 @@
                 </div>
 
                 <div class="yse-debug-info">
-                    Version: ${CONFIG.VERSION} | Alt+S でショートカット
+                    <div>Version: ${CONFIG.VERSION} | Alt+S でショートカット</div>
+                    <button id="yse-open-logpanel" style="
+                        margin-top: 8px;
+                        background: #3ea6ff;
+                        border: none;
+                        color: #000;
+                        padding: 6px 12px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 12px;
+                        font-weight: bold;
+                    ">ログパネルを開く (Ctrl+Shift+L)</button>
                 </div>
             `;
         },
@@ -1223,6 +1552,14 @@
                 }
             };
             document.addEventListener('keydown', escHandler);
+            
+            // ログパネルを開くボタン
+            const logPanelBtn = this.panel.querySelector('#yse-open-logpanel');
+            if (logPanelBtn) {
+                logPanelBtn.addEventListener('click', () => {
+                    LogPanel.show();
+                });
+            }
         },
 
         saveSettings() {
@@ -1250,12 +1587,19 @@
                     <span>YSE v${CONFIG.VERSION}</span>
                 </div>
                 <div style="font-size: 10px; color: #888; margin-top: 2px;">
-                    クリックで設定を開く
+                    左:設定 / 右:ログ
                 </div>
             `;
             
+            // 左クリックで設定を開く
             this.element.addEventListener('click', () => {
                 UIController.openSettings();
+            });
+            
+            // 右クリックでログパネルを開く
+            this.element.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                LogPanel.show();
             });
 
             // 5秒後に薄くする
@@ -1310,12 +1654,17 @@
         // デバッグインジケーターを表示
         DebugIndicator.init();
         
+        // ログパネルを初期化
+        LogPanel.init();
+        
         // 設定の状態をログ出力
         Logger.info('現在の設定:', {
             preferredLanguage: Settings.get('preferredLanguage'),
             sentenceMode: Settings.get('sentenceMode'),
             fontSize: Settings.get('fontSize')
         });
+        
+        Logger.info('初期化完了 - 左クリックで設定、右クリックでログパネル、Ctrl+Shift+Lでもログパネル');
     }
 
     // スクリプト起動
