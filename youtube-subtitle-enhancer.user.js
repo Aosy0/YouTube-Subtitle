@@ -530,6 +530,32 @@
                     background: rgba(255, 255, 255, 0.3);
                 }
 
+                /* デバッグインジケーター */
+                .yse-debug-indicator {
+                    position: fixed;
+                    bottom: 10px;
+                    right: 10px;
+                    background: rgba(0, 0, 0, 0.8);
+                    color: #3ea6ff;
+                    padding: 8px 12px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    font-family: monospace;
+                    z-index: 9999;
+                    border: 1px solid #3ea6ff;
+                    cursor: pointer;
+                    opacity: 0.7;
+                    transition: opacity 0.2s;
+                }
+
+                .yse-debug-indicator:hover {
+                    opacity: 1;
+                }
+
+                .yse-debug-indicator.hidden {
+                    display: none;
+                }
+
                 /* YouTube設定メニュー統合スタイル */
                 .yse-settings-menu-item {
                     transition: background-color 0.2s;
@@ -729,10 +755,23 @@
     const YouTubeSettingsIntegration = {
         settingsMenuObserver: null,
         isSettingsMenuOpen: false,
+        menuCheckInterval: null,
 
         init() {
             this.observeSettingsMenu();
+            this.startMenuCheckInterval();
             Logger.info('YouTube設定メニュー統合を初期化しました');
+        },
+
+        startMenuCheckInterval() {
+            // 1秒ごとに設定メニューをチェック（バックアップ手段）
+            this.menuCheckInterval = setInterval(() => {
+                const settingsMenu = document.querySelector('.ytp-settings-menu');
+                if (settingsMenu && !settingsMenu.querySelector('.yse-settings-menu-item')) {
+                    Logger.debug('設定メニューを検出しました（インターバル）');
+                    this.onSettingsMenuOpened(settingsMenu);
+                }
+            }, 1000);
         },
 
         observeSettingsMenu() {
@@ -740,8 +779,18 @@
             this.settingsMenuObserver = new MutationObserver((mutations) => {
                 mutations.forEach((mutation) => {
                     mutation.addedNodes.forEach((node) => {
-                        if (node.nodeType === 1 && node.classList?.contains('ytp-settings-menu')) {
-                            this.onSettingsMenuOpened(node);
+                        if (node.nodeType === 1) {
+                            // 直接ytp-settings-menuが追加された場合
+                            if (node.classList?.contains('ytp-settings-menu')) {
+                                Logger.debug('設定メニューが追加されました（MutationObserver）');
+                                this.onSettingsMenuOpened(node);
+                            }
+                            // 子要素にytp-settings-menuがある場合
+                            const settingsMenu = node.querySelector?.('.ytp-settings-menu');
+                            if (settingsMenu) {
+                                Logger.debug('設定メニューが子要素として追加されました');
+                                this.onSettingsMenuOpened(settingsMenu);
+                            }
                         }
                     });
                 });
@@ -751,6 +800,8 @@
                 childList: true,
                 subtree: true
             });
+            
+            Logger.debug('MutationObserverを設定しました');
         },
 
         onSettingsMenuOpened(menuElement) {
@@ -761,66 +812,112 @@
 
             Logger.debug('YouTube設定メニューが開かれました');
 
-            // 設定メニューの内容を取得
-            const menuContent = menuElement.querySelector('.ytp-panel-menu');
-            if (!menuContent) return;
+            // 設定メニューの内容を取得（複数のセレクタを試行）
+            let menuContent = menuElement.querySelector('.ytp-panel-menu');
+            
+            // フォールバック: 他のセレクタも試す
+            if (!menuContent) {
+                menuContent = menuElement.querySelector('[class*="panel-menu"]');
+            }
+            
+            if (!menuContent) {
+                // 直接menuitemを探す
+                const menuItems = menuElement.querySelectorAll('.ytp-menuitem');
+                if (menuItems.length > 0) {
+                    Logger.debug(`既存のメニュー項目が ${menuItems.length} 個見つかりました`);
+                    // 最後のメニュー項目の親をメニューコンテンツとして使用
+                    menuContent = menuItems[menuItems.length - 1].parentElement;
+                }
+            }
+            
+            if (!menuContent) {
+                Logger.warn('メニューコンテンツが見つかりませんでした');
+                return;
+            }
+
+            Logger.debug('メニューコンテンツを見つけました:', menuContent.className);
 
             // 字幕設定項目を追加
             this.addSubtitleSettingsMenu(menuContent);
         },
 
         addSubtitleSettingsMenu(menuContent) {
+            // 既に追加済みかチェック
+            if (menuContent.querySelector('.yse-settings-menu-item')) {
+                Logger.debug('既に字幕設定メニューが追加されています');
+                return;
+            }
+
             // 「字幕設定（拡張）」メニュー項目を作成
             const menuItem = document.createElement('div');
             menuItem.className = 'ytp-menuitem yse-settings-menu-item';
             menuItem.setAttribute('role', 'menuitem');
             menuItem.setAttribute('tabindex', '0');
             menuItem.innerHTML = `
-                <div class="ytp-menuitem-icon">
-                    <svg height="24" width="24" viewBox="0 0 24 24" fill="currentColor">
+                <div class="ytp-menuitem-icon" style="display: flex; align-items: center; justify-content: center;">
+                    <svg height="24" width="24" viewBox="0 0 24 24" fill="currentColor" style="opacity: 0.7;">
                         <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>
                     </svg>
                 </div>
-                <div class="ytp-menuitem-label">字幕設定（拡張）</div>
-                <div class="ytp-menuitem-content">
-                    <span class="yse-settings-status">開く</span>
+                <div class="ytp-menuitem-label" style="display: flex; align-items: center;">字幕設定（拡張）</div>
+                <div class="ytp-menuitem-content" style="display: flex; align-items: center; justify-content: flex-end;">
+                    <span class="yse-settings-status" style="opacity: 0.5; font-size: 11px;">開く</span>
                 </div>
             `;
 
-            // スタイル調整
-            menuItem.style.cssText = `
-                border-top: 1px solid rgba(255,255,255,0.1);
-                margin-top: 8px;
-                padding-top: 8px;
-            `;
-
             // クリックイベント
-            menuItem.addEventListener('click', () => {
+            menuItem.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                Logger.debug('字幕設定メニューがクリックされました');
                 this.openSubtitleSettingsPanel();
             });
 
-            // メニューに追加（「字幕」項目の後か、先頭に）
-            const subtitleItem = Array.from(menuContent.querySelectorAll('.ytp-menuitem'))
-                .find(item => item.textContent.includes('字幕'));
+            // キーボードイベント（Enterキー）
+            menuItem.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    this.openSubtitleSettingsPanel();
+                }
+            });
+
+            // メニューに追加（「字幕」項目の後を探す）
+            const menuItems = Array.from(menuContent.querySelectorAll('.ytp-menuitem'));
+            const subtitleItem = menuItems.find(item => {
+                const label = item.querySelector('.ytp-menuitem-label');
+                return label && (label.textContent.includes('字幕') || label.textContent.includes('Subtitles') || label.textContent.includes('CC'));
+            });
             
             if (subtitleItem && subtitleItem.nextSibling) {
                 menuContent.insertBefore(menuItem, subtitleItem.nextSibling);
-            } else {
+                Logger.debug('字幕設定メニューを「字幕」項目の後に追加しました');
+            } else if (menuItems.length > 0) {
+                // 最後に追加
                 menuContent.appendChild(menuItem);
+                Logger.debug('字幕設定メニューを末尾に追加しました');
+            } else {
+                // コンテンツが空の場合
+                menuContent.appendChild(menuItem);
+                Logger.debug('字幕設定メニューを新規に追加しました');
             }
 
-            Logger.debug('字幕設定メニューを追加しました');
+            Logger.debug('字幕設定メニューの追加が完了しました');
         },
 
         openSubtitleSettingsPanel() {
+            Logger.debug('字幕設定パネルを開きます');
+            
             // 既存の設定パネルを閉じる
-            const closeBtn = document.querySelector('.ytp-settings-button');
-            if (closeBtn) closeBtn.click();
+            const settingsButton = document.querySelector('.ytp-settings-button');
+            if (settingsButton) {
+                settingsButton.click();
+                Logger.debug('YouTube設定メニューを閉じました');
+            }
 
             // カスタム設定パネルを開く
             setTimeout(() => {
                 UIController.openSettings();
-            }, 100);
+            }, 150);
         }
     };
 
@@ -1135,6 +1232,66 @@
     };
 
     // ============================================
+    // デバッグインジケーター
+    // ============================================
+    const DebugIndicator = {
+        element: null,
+
+        init() {
+            this.createIndicator();
+        },
+
+        createIndicator() {
+            this.element = document.createElement('div');
+            this.element.className = 'yse-debug-indicator';
+            this.element.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="color: #4ade80;">●</span>
+                    <span>YSE v${CONFIG.VERSION}</span>
+                </div>
+                <div style="font-size: 10px; color: #888; margin-top: 2px;">
+                    クリックで設定を開く
+                </div>
+            `;
+            
+            this.element.addEventListener('click', () => {
+                UIController.openSettings();
+            });
+
+            // 5秒後に薄くする
+            setTimeout(() => {
+                if (this.element) {
+                    this.element.style.opacity = '0.3';
+                }
+            }, 5000);
+
+            document.body.appendChild(this.element);
+            Logger.debug('デバッグインジケーターを作成しました');
+        },
+
+        show() {
+            if (this.element) {
+                this.element.classList.remove('hidden');
+            }
+        },
+
+        hide() {
+            if (this.element) {
+                this.element.classList.add('hidden');
+            }
+        },
+
+        updateStatus(message, isError = false) {
+            if (this.element) {
+                const dot = this.element.querySelector('span:first-child');
+                if (dot) {
+                    dot.style.color = isError ? '#ef4444' : '#4ade80';
+                }
+            }
+        }
+    };
+
+    // ============================================
     // 初期化
     // ============================================
     function init() {
@@ -1149,6 +1306,16 @@
             Logger.setLevel(Logger.levels.DEBUG);
             Logger.debug('デバッグモードが有効です');
         }
+
+        // デバッグインジケーターを表示
+        DebugIndicator.init();
+        
+        // 設定の状態をログ出力
+        Logger.info('現在の設定:', {
+            preferredLanguage: Settings.get('preferredLanguage'),
+            sentenceMode: Settings.get('sentenceMode'),
+            fontSize: Settings.get('fontSize')
+        });
     }
 
     // スクリプト起動
