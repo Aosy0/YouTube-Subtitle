@@ -373,17 +373,17 @@
                     top: 50%;
                     left: 50%;
                     transform: translate(-50%, -50%);
-                    background: #1f1f1f;
-                    border: 1px solid #444;
-                    border-radius: 12px;
+                    background: rgba(28, 28, 28, 0.98);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 16px;
                     padding: 24px;
                     z-index: 10000;
                     color: #fff;
                     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                    min-width: 400px;
-                    max-height: 80vh;
-                    overflow-y: auto;
-                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+                    min-width: 420px;
+                    max-width: 90vw;
+                    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05);
+                    backdrop-filter: blur(20px);
                 }
 
                 .yse-settings-header {
@@ -503,11 +503,89 @@
                 .yse-debug-info {
                     margin-top: 20px;
                     padding: 12px;
-                    background: #2a2a2a;
-                    border-radius: 6px;
+                    background: rgba(42, 42, 42, 0.8);
+                    border-radius: 8px;
                     font-family: monospace;
+                    font-size: 11px;
+                    color: #666;
+                    text-align: center;
+                }
+
+                /* カスタムスクロールバー */
+                .yse-settings-panel ::-webkit-scrollbar {
+                    width: 8px;
+                }
+
+                .yse-settings-panel ::-webkit-scrollbar-track {
+                    background: rgba(255, 255, 255, 0.05);
+                    border-radius: 4px;
+                }
+
+                .yse-settings-panel ::-webkit-scrollbar-thumb {
+                    background: rgba(255, 255, 255, 0.2);
+                    border-radius: 4px;
+                }
+
+                .yse-settings-panel ::-webkit-scrollbar-thumb:hover {
+                    background: rgba(255, 255, 255, 0.3);
+                }
+
+                /* YouTube設定メニュー統合スタイル */
+                .yse-settings-menu-item {
+                    transition: background-color 0.2s;
+                }
+
+                .yse-settings-menu-item:hover {
+                    background-color: rgba(255, 255, 255, 0.1);
+                }
+
+                .yse-settings-status {
+                    color: #aaa;
+                    font-size: 11px;
+                }
+
+                .yse-settings-submenu {
+                    display: none;
+                    position: absolute;
+                    background: rgba(28, 28, 28, 0.9);
+                    border-radius: 4px;
+                    padding: 8px 0;
+                    min-width: 200px;
+                    z-index: 10001;
+                }
+
+                .yse-settings-submenu.visible {
+                    display: block;
+                }
+
+                .yse-submenu-item {
+                    padding: 8px 16px;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    color: #eee;
+                    font-size: 13px;
+                }
+
+                .yse-submenu-item:hover {
+                    background-color: rgba(255, 255, 255, 0.1);
+                }
+
+                .yse-submenu-item input[type="checkbox"] {
+                    width: 16px;
+                    height: 16px;
+                }
+
+                .yse-submenu-item input[type="range"] {
+                    flex: 1;
+                    margin-left: 8px;
+                }
+
+                .yse-submenu-value {
+                    color: #aaa;
                     font-size: 12px;
-                    color: #888;
+                    margin-left: auto;
                 }
             `;
 
@@ -646,6 +724,107 @@
     };
 
     // ============================================
+    // YouTube設定メニュー統合モジュール
+    // ============================================
+    const YouTubeSettingsIntegration = {
+        settingsMenuObserver: null,
+        isSettingsMenuOpen: false,
+
+        init() {
+            this.observeSettingsMenu();
+            Logger.info('YouTube設定メニュー統合を初期化しました');
+        },
+
+        observeSettingsMenu() {
+            // YouTubeの設定メニューを監視
+            this.settingsMenuObserver = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    mutation.addedNodes.forEach((node) => {
+                        if (node.nodeType === 1 && node.classList?.contains('ytp-settings-menu')) {
+                            this.onSettingsMenuOpened(node);
+                        }
+                    });
+                });
+            });
+
+            this.settingsMenuObserver.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+        },
+
+        onSettingsMenuOpened(menuElement) {
+            // 既に追加済みかチェック
+            if (menuElement.querySelector('.yse-settings-menu-item')) {
+                return;
+            }
+
+            Logger.debug('YouTube設定メニューが開かれました');
+
+            // 設定メニューの内容を取得
+            const menuContent = menuElement.querySelector('.ytp-panel-menu');
+            if (!menuContent) return;
+
+            // 字幕設定項目を追加
+            this.addSubtitleSettingsMenu(menuContent);
+        },
+
+        addSubtitleSettingsMenu(menuContent) {
+            // 「字幕設定（拡張）」メニュー項目を作成
+            const menuItem = document.createElement('div');
+            menuItem.className = 'ytp-menuitem yse-settings-menu-item';
+            menuItem.setAttribute('role', 'menuitem');
+            menuItem.setAttribute('tabindex', '0');
+            menuItem.innerHTML = `
+                <div class="ytp-menuitem-icon">
+                    <svg height="24" width="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>
+                    </svg>
+                </div>
+                <div class="ytp-menuitem-label">字幕設定（拡張）</div>
+                <div class="ytp-menuitem-content">
+                    <span class="yse-settings-status">開く</span>
+                </div>
+            `;
+
+            // スタイル調整
+            menuItem.style.cssText = `
+                border-top: 1px solid rgba(255,255,255,0.1);
+                margin-top: 8px;
+                padding-top: 8px;
+            `;
+
+            // クリックイベント
+            menuItem.addEventListener('click', () => {
+                this.openSubtitleSettingsPanel();
+            });
+
+            // メニューに追加（「字幕」項目の後か、先頭に）
+            const subtitleItem = Array.from(menuContent.querySelectorAll('.ytp-menuitem'))
+                .find(item => item.textContent.includes('字幕'));
+            
+            if (subtitleItem && subtitleItem.nextSibling) {
+                menuContent.insertBefore(menuItem, subtitleItem.nextSibling);
+            } else {
+                menuContent.appendChild(menuItem);
+            }
+
+            Logger.debug('字幕設定メニューを追加しました');
+        },
+
+        openSubtitleSettingsPanel() {
+            // 既存の設定パネルを閉じる
+            const closeBtn = document.querySelector('.ytp-settings-button');
+            if (closeBtn) closeBtn.click();
+
+            // カスタム設定パネルを開く
+            setTimeout(() => {
+                UIController.openSettings();
+            }, 100);
+        }
+    };
+
+    // ============================================
     // UI制御モジュール（設定パネル）
     // ============================================
     const UIController = {
@@ -655,31 +834,32 @@
         init() {
             this.setupMenuCommands();
             this.setupKeyboardShortcuts();
+            YouTubeSettingsIntegration.init();
             Logger.info('UIコントローラーを初期化しました');
         },
 
         setupMenuCommands() {
-            GM_registerMenuCommand('⚙️ 設定を開く', () => this.openSettings());
-            GM_registerMenuCommand('🔄 字幕を自動選択', () => {
+            GM_registerMenuCommand('設定を開く', () => this.openSettings());
+            GM_registerMenuCommand('字幕を自動選択', () => {
                 PlayerController.autoSelectSubtitle();
             });
-            GM_registerMenuCommand('📝 設定をエクスポート', () => {
+            GM_registerMenuCommand('設定をエクスポート', () => {
                 const settings = Settings.export();
                 navigator.clipboard.writeText(settings);
-                alert('設定をクリップボードにコピーしました！');
+                alert('設定をクリップボードにコピーしました');
             });
-            GM_registerMenuCommand('📥 設定をインポート', () => {
+            GM_registerMenuCommand('設定をインポート', () => {
                 const json = prompt('設定JSONを貼り付けてください:');
                 if (json && Settings.import(json)) {
                     SubtitleEnhancer.updateStyles();
-                    alert('設定をインポートしました！');
+                    alert('設定をインポートしました');
                 }
             });
-            GM_registerMenuCommand('♻️ 設定をリセット', () => {
+            GM_registerMenuCommand('設定をリセット', () => {
                 if (confirm('すべての設定をデフォルトに戻しますか？')) {
                     Settings.reset();
                     SubtitleEnhancer.updateStyles();
-                    alert('設定をリセットしました！');
+                    alert('設定をリセットしました');
                 }
             });
         },
@@ -705,12 +885,27 @@
         openSettings() {
             if (this.panel) return;
 
+            // YouTubeプレーヤーの上に表示するためのコンテナを作成
+            const player = document.querySelector('#movie_player');
+            const container = player || document.body;
+
             this.panel = document.createElement('div');
             this.panel.className = 'yse-settings-panel';
             this.panel.innerHTML = this.generateSettingsHTML();
             
-            document.body.appendChild(this.panel);
+            // アニメーション効果
+            this.panel.style.opacity = '0';
+            this.panel.style.transform = 'translate(-50%, -45%)';
+            
+            container.appendChild(this.panel);
             this.isOpen = true;
+
+            // フェードインアニメーション
+            requestAnimationFrame(() => {
+                this.panel.style.transition = 'opacity 0.2s, transform 0.2s';
+                this.panel.style.opacity = '1';
+                this.panel.style.transform = 'translate(-50%, -50%)';
+            });
 
             this.attachEventListeners();
             Logger.debug('設定パネルを開きました');
@@ -718,85 +913,132 @@
 
         closeSettings() {
             if (this.panel) {
-                this.panel.remove();
-                this.panel = null;
-                this.isOpen = false;
+                // フェードアウトアニメーション
+                this.panel.style.opacity = '0';
+                this.panel.style.transform = 'translate(-50%, -45%)';
+                
+                setTimeout(() => {
+                    if (this.panel) {
+                        this.panel.remove();
+                        this.panel = null;
+                        this.isOpen = false;
+                    }
+                }, 200);
+                
                 Logger.debug('設定パネルを閉じました');
             }
         },
 
         generateSettingsHTML() {
+            const pos = Settings.get('position');
             return `
                 <div class="yse-settings-header">
-                    <h2 class="yse-settings-title">YouTube Subtitle Enhancer 設定</h2>
-                    <button class="yse-settings-close">&times;</button>
+                    <h2 class="yse-settings-title">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="vertical-align: middle; margin-right: 8px;">
+                            <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>
+                        </svg>
+                        字幕設定（拡張）
+                    </h2>
+                    <button class="yse-settings-close" title="閉じる">&times;</button>
                 </div>
 
-                <div class="yse-setting-group">
-                    <label class="yse-setting-label">優先言語 (ISO 639-1)</label>
-                    <input type="text" class="yse-setting-input" data-key="preferredLanguage" 
-                           value="${Settings.get('preferredLanguage')}">
-                </div>
+                <div style="max-height: 60vh; overflow-y: auto; padding-right: 8px;">
+                    <div class="yse-setting-group">
+                        <label class="yse-setting-label">優先言語 (ISO 639-1)</label>
+                        <input type="text" class="yse-setting-input" data-key="preferredLanguage" 
+                               value="${Settings.get('preferredLanguage')}" placeholder="例: ja, en, ko">
+                        <small style="color: #888; font-size: 12px;">日本語の場合は「ja」を入力</small>
+                    </div>
 
-                <div class="yse-setting-group">
-                    <label class="yse-setting-label">フォールバック言語</label>
-                    <input type="text" class="yse-setting-input" data-key="fallbackLanguage" 
-                           value="${Settings.get('fallbackLanguage')}">
-                </div>
+                    <div class="yse-setting-group">
+                        <label class="yse-setting-label">フォールバック言語</label>
+                        <input type="text" class="yse-setting-input" data-key="fallbackLanguage" 
+                               value="${Settings.get('fallbackLanguage')}" placeholder="例: en">
+                        <small style="color: #888; font-size: 12px;">優先言語がない場合に使用</small>
+                    </div>
 
-                <div class="yse-setting-group">
-                    <label class="yse-setting-checkbox">
-                        <input type="checkbox" data-key="autoTranslateIfNotAvailable" 
-                               ${Settings.get('autoTranslateIfNotAvailable') ? 'checked' : ''}>
-                        <span>字幕がない場合は自動翻訳を使用</span>
-                    </label>
-                </div>
+                    <div class="yse-setting-group">
+                        <label class="yse-setting-checkbox">
+                            <input type="checkbox" data-key="autoTranslateIfNotAvailable" 
+                                   ${Settings.get('autoTranslateIfNotAvailable') ? 'checked' : ''}>
+                            <span>字幕がない場合は自動翻訳を使用</span>
+                        </label>
+                    </div>
 
-                <div class="yse-setting-group">
-                    <label class="yse-setting-checkbox">
-                        <input type="checkbox" data-key="sentenceMode" 
-                               ${Settings.get('sentenceMode') ? 'checked' : ''}>
-                        <span>文単位で表示（自動生成字幕を改善）</span>
-                    </label>
-                </div>
+                    <div style="border-top: 1px solid #444; margin: 16px 0;"></div>
 
-                <div class="yse-setting-group">
-                    <label class="yse-setting-label">フォントサイズ (px)</label>
-                    <input type="number" class="yse-setting-input" data-key="fontSize" 
-                           value="${Settings.get('fontSize')}" min="10" max="72">
-                </div>
+                    <div class="yse-setting-group">
+                        <label class="yse-setting-checkbox">
+                            <input type="checkbox" data-key="sentenceMode" 
+                                   ${Settings.get('sentenceMode') ? 'checked' : ''}>
+                            <span>文単位で表示（自動生成字幕を改善）</span>
+                        </label>
+                        <small style="color: #888; font-size: 12px; display: block; margin-top: 4px; padding-left: 26px;">
+                            1文字ずつの表示を文単位にまとめます
+                        </small>
+                    </div>
 
-                <div class="yse-setting-group">
-                    <label class="yse-setting-label">フォントファミリー</label>
-                    <input type="text" class="yse-setting-input" data-key="fontFamily" 
-                           value="${Settings.get('fontFamily')}">
-                </div>
+                    <div class="yse-setting-group">
+                        <label class="yse-setting-label">フォントサイズ: <span id="fontSize-value">${Settings.get('fontSize')}</span>px</label>
+                        <input type="range" class="yse-setting-input" data-key="fontSize" 
+                               value="${Settings.get('fontSize')}" min="12" max="48" style="width: 100%;">
+                    </div>
 
-                <div class="yse-setting-group">
-                    <label class="yse-setting-label">フォントカラー</label>
-                    <input type="color" class="yse-setting-input" data-key="fontColor" 
-                           value="${Settings.get('fontColor')}">
-                </div>
+                    <div class="yse-setting-group">
+                        <label class="yse-setting-label">フォントファミリー</label>
+                        <input type="text" class="yse-setting-input" data-key="fontFamily" 
+                               value="${Settings.get('fontFamily')}">
+                    </div>
 
-                <div class="yse-setting-group">
-                    <label class="yse-setting-label">背景色 (RGBA)</label>
-                    <input type="text" class="yse-setting-input" data-key="backgroundColor" 
-                           value="${Settings.get('backgroundColor')}">
-                </div>
+                    <div class="yse-setting-group">
+                        <label class="yse-setting-label">フォントカラー</label>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="color" class="yse-setting-input" data-key="fontColor" 
+                                   value="${Settings.get('fontColor')}" style="width: 60px; height: 36px; padding: 2px;">
+                            <input type="text" class="yse-setting-input" data-key="fontColor" 
+                                   value="${Settings.get('fontColor')}" style="flex: 1;">
+                        </div>
+                    </div>
 
-                <div class="yse-setting-group">
-                    <label class="yse-setting-label">字幕位置</label>
-                    <select class="yse-setting-input" data-key="position">
-                        <option value="bottom" ${Settings.get('position') === 'bottom' ? 'selected' : ''}>下部</option>
-                        <option value="top" ${Settings.get('position') === 'top' ? 'selected' : ''}>上部</option>
-                        <option value="custom" ${Settings.get('position') === 'custom' ? 'selected' : ''}>カスタム</option>
-                    </select>
-                </div>
+                    <div class="yse-setting-group">
+                        <label class="yse-setting-label">背景色</label>
+                        <input type="text" class="yse-setting-input" data-key="backgroundColor" 
+                               value="${Settings.get('backgroundColor')}" placeholder="rgba(0, 0, 0, 0.75)">
+                        <small style="color: #888; font-size: 12px;">例: rgba(0, 0, 0, 0.75) または #000000cc</small>
+                    </div>
 
-                <div class="yse-setting-group">
-                    <label class="yse-setting-label">最大行数</label>
-                    <input type="number" class="yse-setting-input" data-key="maxLines" 
-                           value="${Settings.get('maxLines')}" min="1" max="5">
+                    <div class="yse-setting-group">
+                        <label class="yse-setting-label">字幕位置</label>
+                        <select class="yse-setting-input" data-key="position">
+                            <option value="bottom" ${pos === 'bottom' ? 'selected' : ''}>下部（デフォルト）</option>
+                            <option value="top" ${pos === 'top' ? 'selected' : ''}>上部</option>
+                            <option value="custom" ${pos === 'custom' ? 'selected' : ''}>カスタム位置</option>
+                        </select>
+                    </div>
+
+                    <div class="yse-setting-group" id="customPositionGroup" style="display: ${pos === 'custom' ? 'block' : 'none'};">
+                        <label class="yse-setting-label">下端からの距離: <span id="customPositionY-value">${Settings.get('customPositionY')}</span>%</label>
+                        <input type="range" class="yse-setting-input" data-key="customPositionY" 
+                               value="${Settings.get('customPositionY')}" min="0" max="50" style="width: 100%;">
+                    </div>
+
+                    <div class="yse-setting-group">
+                        <label class="yse-setting-label">最大行数</label>
+                        <input type="number" class="yse-setting-input" data-key="maxLines" 
+                               value="${Settings.get('maxLines')}" min="1" max="5">
+                    </div>
+
+                    <div class="yse-setting-group">
+                        <label class="yse-setting-label">行の高さ</label>
+                        <input type="number" class="yse-setting-input" data-key="lineHeight" 
+                               value="${Settings.get('lineHeight')}" min="1" max="3" step="0.1">
+                    </div>
+
+                    <div class="yse-setting-group">
+                        <label class="yse-setting-label">文字間隔 (px)</label>
+                        <input type="number" class="yse-setting-input" data-key="letterSpacing" 
+                               value="${Settings.get('letterSpacing')}" min="0" max="5" step="0.5">
+                    </div>
                 </div>
 
                 <div class="yse-settings-buttons">
@@ -805,9 +1047,7 @@
                 </div>
 
                 <div class="yse-debug-info">
-                    Version: ${CONFIG.VERSION}<br>
-                    Debug Mode: ${CONFIG.DEBUG}<br>
-                    Shortcut: Alt + S
+                    Version: ${CONFIG.VERSION} | Alt+S でショートカット
                 </div>
             `;
         },
@@ -831,19 +1071,61 @@
 
             // 入力フィールドのリアルタイム更新
             this.panel.querySelectorAll('.yse-setting-input, .yse-setting-checkbox input').forEach(input => {
+                // レンジスライダーのリアルタイム更新
+                if (input.type === 'range') {
+                    input.addEventListener('input', (e) => {
+                        const key = e.target.dataset.key;
+                        const value = parseInt(e.target.value, 10);
+                        
+                        // 値表示の更新
+                        const valueDisplay = this.panel.querySelector(`#${key}-value`);
+                        if (valueDisplay) {
+                            valueDisplay.textContent = value;
+                        }
+                        
+                        Settings.set(key, value);
+                        SubtitleEnhancer.updateStyles();
+                    });
+                }
+
+                // 変更イベント
                 input.addEventListener('change', (e) => {
                     const key = e.target.dataset.key;
                     let value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
                     
                     // 数値型の変換
                     if (e.target.type === 'number') {
-                        value = parseInt(value, 10);
+                        value = parseFloat(e.target.value);
                     }
                     
                     Settings.set(key, value);
                     SubtitleEnhancer.updateStyles();
+                    
+                    // 字幕位置が変更された場合、カスタム位置設定の表示/非表示を切り替え
+                    if (key === 'position') {
+                        const customGroup = this.panel.querySelector('#customPositionGroup');
+                        if (customGroup) {
+                            customGroup.style.display = value === 'custom' ? 'block' : 'none';
+                        }
+                    }
                 });
             });
+
+            // パネル外クリックで閉じる
+            this.panel.addEventListener('click', (e) => {
+                if (e.target === this.panel) {
+                    this.closeSettings();
+                }
+            });
+
+            // ESCキーで閉じる
+            const escHandler = (e) => {
+                if (e.key === 'Escape') {
+                    this.closeSettings();
+                    document.removeEventListener('keydown', escHandler);
+                }
+            };
+            document.addEventListener('keydown', escHandler);
         },
 
         saveSettings() {
