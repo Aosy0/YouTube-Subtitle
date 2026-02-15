@@ -180,9 +180,24 @@
         autoRefreshInterval: null,
 
         init() {
-            this.createPanel();
-            this.setupKeyboardShortcut();
-            Logger.info('ログパネルを初期化しました');
+            // 既に作成済みかチェック
+            if (document.getElementById('yse-log-panel')) {
+                Logger.debug('ログパネルは既に存在します');
+                return;
+            }
+            
+            // DOMが準備できているか確認
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', () => {
+                    this.createPanel();
+                    this.setupKeyboardShortcut();
+                    Logger.info('ログパネルを初期化しました');
+                });
+            } else {
+                this.createPanel();
+                this.setupKeyboardShortcut();
+                Logger.info('ログパネルを初期化しました');
+            }
         },
 
         createPanel() {
@@ -850,19 +865,20 @@
                 /* デバッグインジケーター */
                 .yse-debug-indicator {
                     position: fixed;
-                    bottom: 10px;
-                    right: 10px;
+                    top: 10px;
+                    left: 80px;
                     background: rgba(0, 0, 0, 0.8);
                     color: #3ea6ff;
-                    padding: 8px 12px;
+                    padding: 6px 10px;
                     border-radius: 4px;
-                    font-size: 12px;
+                    font-size: 11px;
                     font-family: monospace;
                     z-index: 9999;
                     border: 1px solid #3ea6ff;
                     cursor: pointer;
-                    opacity: 0.7;
+                    opacity: 0.9;
                     transition: opacity 0.2s;
+                    white-space: nowrap;
                 }
 
                 .yse-debug-indicator:hover {
@@ -1575,19 +1591,32 @@
         element: null,
 
         init() {
-            this.createIndicator();
+            // 既に作成済みかチェック
+            if (document.querySelector('.yse-debug-indicator')) {
+                Logger.debug('デバッグインジケーターは既に存在します');
+                return;
+            }
+            
+            // DOMが準備できているか確認
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', () => {
+                    this.createIndicator();
+                });
+            } else {
+                this.createIndicator();
+            }
         },
 
         createIndicator() {
+            // YouTubeのヘッダーを探す
+            const masthead = document.querySelector('#masthead-container, #masthead, ytd-masthead');
+            
             this.element = document.createElement('div');
             this.element.className = 'yse-debug-indicator';
             this.element.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="color: #4ade80;">●</span>
                     <span>YSE v${CONFIG.VERSION}</span>
-                </div>
-                <div style="font-size: 10px; color: #888; margin-top: 2px;">
-                    左:設定 / 右:ログ
                 </div>
             `;
             
@@ -1602,15 +1631,27 @@
                 LogPanel.show();
             });
 
-            // 5秒後に薄くする
-            setTimeout(() => {
-                if (this.element) {
-                    this.element.style.opacity = '0.3';
+            // YouTubeのヘッダー内に追加（ロゴの右側）
+            if (masthead) {
+                // ヘッダー内の最初の要素の後に挿入
+                const firstChild = masthead.querySelector('#logo, #start, #logo-icon');
+                if (firstChild && firstChild.parentElement) {
+                    firstChild.parentElement.insertBefore(this.element, firstChild.nextSibling);
+                    this.element.style.position = 'relative';
+                    this.element.style.top = 'auto';
+                    this.element.style.left = 'auto';
+                    this.element.style.marginLeft = '10px';
+                    this.element.style.marginTop = '8px';
+                    Logger.debug('デバッグインジケーターをヘッダーに追加しました');
+                } else {
+                    masthead.insertBefore(this.element, masthead.firstChild);
+                    Logger.debug('デバッグインジケーターをヘッダー先頭に追加しました');
                 }
-            }, 5000);
-
-            document.body.appendChild(this.element);
-            Logger.debug('デバッグインジケーターを作成しました');
+            } else {
+                // ヘッダーが見つからない場合は左上に固定
+                document.body.appendChild(this.element);
+                Logger.debug('デバッグインジケーターを左上に追加しました');
+            }
         },
 
         show() {
