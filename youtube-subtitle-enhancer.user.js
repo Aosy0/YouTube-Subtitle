@@ -20,6 +20,13 @@
     // ============================================
     // YouTube Subtitle Enhancer - メインエントリーポイント
     // ============================================
+    
+    // 絶対に出るログ（初期化確認用）
+    console.log('[YSE] ========================================');
+    console.log('[YSE] YouTube Subtitle Enhancer スクリプト読み込み開始');
+    console.log('[YSE] URL:', window.location.href);
+    console.log('[YSE] タイムスタンプ:', new Date().toISOString());
+    console.log('[YSE] ========================================');
 
     const CONFIG = {
         DEBUG: false,
@@ -1800,8 +1807,52 @@
         });
     }
 
-    function init() {
+    // ============================================
+    // SPA対応のナビゲーションフック
+    // ============================================
+    function setupNavigationHook() {
+        console.log('[YSE] ナビゲーションフックを設定中...');
+        
+        // YouTubeの内部イベントで動画切り替えを検知
+        window.addEventListener('yt-navigate-finish', () => {
+            console.log('[YSE] yt-navigate-finish検知 - 動画切り替え');
+            window.YSE_INITIALIZED = false; // 再初期化を許可
+            setTimeout(initForVideo, 1000); // 1秒後に初期化
+        }, true);
+        
+        // URL変更の監視（フォールバック）
+        let lastUrl = location.href;
+        const observer = new MutationObserver(() => {
+            const url = location.href;
+            if (url !== lastUrl) {
+                lastUrl = url;
+                console.log('[YSE] URL変更検知:', url);
+                if (url.includes('/watch')) {
+                    window.YSE_INITIALIZED = false;
+                    setTimeout(initForVideo, 1000);
+                }
+            }
+        });
+        observer.observe(document, { subtree: true, childList: true });
+        
+        console.log('[YSE] ナビゲーションフック設定完了');
+    }
+
+    // ============================================
+    // 動画ページ用初期化
+    // ============================================
+    function initForVideo() {
         try {
+            console.log('[YSE] ========================================');
+            console.log('[YSE] 動画ページ初期化開始');
+            console.log('[YSE] ========================================');
+            
+            // watchページのみ実行
+            if (!window.location.pathname.includes('/watch')) {
+                console.log('[YSE] watchページではないためスキップ');
+                return;
+            }
+            
             // 重複初期化防止
             if (window.YSE_INITIALIZED) {
                 console.log('[YSE] 既に初期化済みです');
@@ -1809,93 +1860,85 @@
             }
             window.YSE_INITIALIZED = true;
             
-            console.log('[YSE] YouTube Subtitle Enhancer を起動しています...');
-            
-            // エラーハンドリングを設定
-            setupErrorHandling();
-            
-            // 各モジュールを順番に初期化（エラーをキャッチ）
+            // 各モジュールを初期化
             try {
                 Settings.init();
-                console.log('[YSE] Settings initialized');
+                console.log('[YSE] Settings OK');
             } catch (e) {
-                console.error('[YSE] Settings initialization failed:', e);
+                console.error('[YSE] Settingsエラー:', e);
             }
             
             try {
                 UIController.init();
-                console.log('[YSE] UIController initialized');
+                console.log('[YSE] UIController OK');
             } catch (e) {
-                console.error('[YSE] UIController initialization failed:', e);
+                console.error('[YSE] UIControllerエラー:', e);
             }
             
             try {
                 PlayerController.init();
-                console.log('[YSE] PlayerController initialized');
+                console.log('[YSE] PlayerController OK');
             } catch (e) {
-                console.error('[YSE] PlayerController initialization failed:', e);
+                console.error('[YSE] PlayerControllerエラー:', e);
             }
-
-            // デバッグモードが有効な場合
-            if (CONFIG.DEBUG) {
-                Logger.setLevel(Logger.levels.DEBUG);
-                Logger.debug('デバッグモードが有効です');
-            }
-
-            // デバッグインジケーターを表示
+            
             try {
                 DebugIndicator.init();
-                console.log('[YSE] DebugIndicator initialized');
+                console.log('[YSE] DebugIndicator OK');
             } catch (e) {
-                console.error('[YSE] DebugIndicator initialization failed:', e);
+                console.error('[YSE] DebugIndicatorエラー:', e);
             }
             
-            // ログパネルを初期化
             try {
                 LogPanel.init();
-                console.log('[YSE] LogPanel initialized');
+                console.log('[YSE] LogPanel OK');
             } catch (e) {
-                console.error('[YSE] LogPanel initialization failed:', e);
+                console.error('[YSE] LogPanelエラー:', e);
             }
             
-            console.log('[YSE] 初期化完了');
+            console.log('[YSE] ========================================');
+            console.log('[YSE] 初期化完了！');
+            console.log('[YSE] ========================================');
+            
         } catch (e) {
             console.error('[YSE] 初期化中に致命的なエラー:', e);
         }
     }
 
-    // スクリプト起動 - DOMが完全に準備できてから初期化
-    function waitForInit() {
-        console.log('[YSE] 初期化を待機中... readyState:', document.readyState);
+    // ============================================
+    // メイン初期化
+    // ============================================
+    function main() {
+        console.log('[YSE] ========================================');
+        console.log('[YSE] メイン関数開始');
+        console.log('[YSE] ========================================');
         
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => {
-                console.log('[YSE] DOMContentLoadedイベント発生');
-                setTimeout(init, 100);
-            });
+        // グローバルエラーハンドリング
+        window.addEventListener('error', (e) => {
+            console.error('[YSE] グローバルエラー:', e.message);
+        });
+        
+        // ナビゲーションフックを設定
+        setupNavigationHook();
+        
+        // 初回実行
+        if (window.location.pathname.includes('/watch')) {
+            console.log('[YSE] watchページを検出 - 初期化を実行');
+            setTimeout(initForVideo, 500);
         } else {
-            // DOMContentLoaded後も少し待ってYouTubeの動的コンテンツを待つ
-            setTimeout(init, 500);
+            console.log('[YSE] watchページではないため、初期化を待機');
         }
     }
-    
-    // 確実に実行されるように複数の方法で初期化を試みる
-    waitForInit();
-    
-    // フォールバック: 2秒後にも実行
-    setTimeout(() => {
-        if (!window.YSE_INITIALIZED) {
-            console.log('[YSE] フォールバック初期化を実行します');
-            init();
-        }
-    }, 2000);
-    
-    // さらなるフォールバック: 5秒後にも実行
-    setTimeout(() => {
-        if (!window.YSE_INITIALIZED) {
-            console.log('[YSE] 最終フォールバック初期化を実行します');
-            init();
-        }
-    }, 5000);
+
+    // ============================================
+    // スクリプト実行
+    // ============================================
+    if (document.readyState === 'loading') {
+        console.log('[YSE] DOM読み込み中 - DOMContentLoadedを待機');
+        document.addEventListener('DOMContentLoaded', main);
+    } else {
+        console.log('[YSE] DOM既に読み込み済み - 即座に実行');
+        main();
+    }
 
 })();
