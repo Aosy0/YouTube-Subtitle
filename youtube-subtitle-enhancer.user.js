@@ -176,6 +176,23 @@
             this.save();
             Logger.info('設定をデフォルトにリセットしました');
         },
+
+        export() {
+            return JSON.stringify(this.data, null, 2);
+        },
+
+        import(jsonString) {
+            try {
+                const imported = JSON.parse(jsonString);
+                this.data = { ...CONFIG.DEFAULT_SETTINGS, ...imported };
+                this.save();
+                Logger.info('設定をインポートしました');
+                return true;
+            } catch (e) {
+                Logger.error('設定のインポートに失敗しました:', e);
+                return false;
+            }
+        },
     };
 
     // ============================================
@@ -461,23 +478,6 @@
             if (this.autoRefreshInterval) {
                 clearInterval(this.autoRefreshInterval);
                 this.autoRefreshInterval = null;
-            }
-        }
-
-        export() {
-            return JSON.stringify(this.data, null, 2);
-        },
-
-        import(jsonString) {
-            try {
-                const imported = JSON.parse(jsonString);
-                this.data = { ...CONFIG.DEFAULT_SETTINGS, ...imported };
-                this.save();
-                Logger.info('設定をインポートしました');
-                return true;
-            } catch (e) {
-                Logger.error('設定のインポートに失敗しました:', e);
-                return false;
             }
         }
     };
