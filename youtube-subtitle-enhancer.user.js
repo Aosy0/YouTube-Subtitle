@@ -11,7 +11,7 @@
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
 // @grant        GM_addStyle
-// @run-at       document-start
+// @run-at       document-end
 // ==/UserScript==
 
 (function() {
@@ -953,12 +953,23 @@
         },
 
         waitForCaptions() {
+            Logger.debug('字幕コンテナを監視中...');
+            
             // 字幕コンテナの監視
+            let attempts = 0;
+            const maxAttempts = 60; // 30秒間試行
+            
             const checkInterval = setInterval(() => {
-                const captionWindow = document.querySelector('.caption-window');
+                attempts++;
+                const captionWindow = document.querySelector('.caption-window, .ytp-caption-window');
+                
                 if (captionWindow) {
                     clearInterval(checkInterval);
+                    Logger.info('字幕コンテナを発見しました');
                     this.setupCaptionObserver(captionWindow);
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(checkInterval);
+                    Logger.warn('字幕コンテナが見つかりませんでした');
                 }
             }, 500);
         },
@@ -1608,15 +1619,12 @@
         },
 
         createIndicator() {
-            // YouTubeのヘッダーを探す
-            const masthead = document.querySelector('#masthead-container, #masthead, ytd-masthead');
-            
             this.element = document.createElement('div');
             this.element.className = 'yse-debug-indicator';
             this.element.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="color: #4ade80;">●</span>
-                    <span>YSE v${CONFIG.VERSION}</span>
+                    <span>YSE</span>
                 </div>
             `;
             
@@ -1632,25 +1640,35 @@
             });
 
             // YouTubeのヘッダー内に追加（ロゴの右側）
-            if (masthead) {
-                // ヘッダー内の最初の要素の後に挿入
-                const firstChild = masthead.querySelector('#logo, #start, #logo-icon');
-                if (firstChild && firstChild.parentElement) {
-                    firstChild.parentElement.insertBefore(this.element, firstChild.nextSibling);
-                    this.element.style.position = 'relative';
-                    this.element.style.top = 'auto';
-                    this.element.style.left = 'auto';
-                    this.element.style.marginLeft = '10px';
-                    this.element.style.marginTop = '8px';
-                    Logger.debug('デバッグインジケーターをヘッダーに追加しました');
-                } else {
-                    masthead.insertBefore(this.element, masthead.firstChild);
-                    Logger.debug('デバッグインジケーターをヘッダー先頭に追加しました');
+            // 複数のセレクタを試行
+            const selectors = [
+                '#masthead-container #start',
+                '#masthead #start', 
+                'ytd-masthead #start',
+                '#masthead-container',
+                '#masthead'
+            ];
+            
+            let container = null;
+            for (const selector of selectors) {
+                container = document.querySelector(selector);
+                if (container) {
+                    Logger.debug(`ヘッダーコンテナを発見: ${selector}`);
+                    break;
                 }
+            }
+            
+            if (container) {
+                // startセクションの最後に追加
+                container.appendChild(this.element);
+                this.element.style.position = 'relative';
+                this.element.style.display = 'inline-flex';
+                this.element.style.marginLeft = '16px';
+                Logger.info('デバッグインジケーターを追加しました');
             } else {
                 // ヘッダーが見つからない場合は左上に固定
                 document.body.appendChild(this.element);
-                Logger.debug('デバッグインジケーターを左上に追加しました');
+                Logger.warn('ヘッダーが見つからないため、bodyに追加しました');
             }
         },
 
@@ -1680,6 +1698,13 @@
     // 初期化
     // ============================================
     function init() {
+        // 重複初期化防止
+        if (window.YSE_INITIALIZED) {
+            Logger.debug('既に初期化済みです');
+            return;
+        }
+        window.YSE_INITIALIZED = true;
+        
         Logger.info('YouTube Subtitle Enhancer を起動しています...');
         
         Settings.init();
@@ -1708,11 +1733,25 @@
         Logger.info('初期化完了 - 左クリックで設定、右クリックでログパネル、Ctrl+Shift+Lでもログパネル');
     }
 
-    // スクリプト起動
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
+    // スクリプト起動 - DOMが完全に準備できてから初期化
+    function waitForInit() {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            // DOMContentLoaded後も少し待ってYouTubeの動的コンテンツを待つ
+            setTimeout(init, 500);
+        }
     }
+    
+    // 確実に実行されるように複数の方法で初期化を試みる
+    waitForInit();
+    
+    // フォールバック: 2秒後にも実行
+    setTimeout(() => {
+        if (!window.YSE_INITIALIZED) {
+            Logger.info('フォールバック初期化を実行します');
+            init();
+        }
+    }, 2000);
 
 })();
