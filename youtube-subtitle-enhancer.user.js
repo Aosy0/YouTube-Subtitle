@@ -864,29 +864,30 @@
 
                 /* デバッグインジケーター */
                 .yse-debug-indicator {
-                    position: fixed;
-                    top: 10px;
-                    left: 80px;
-                    background: rgba(0, 0, 0, 0.8);
-                    color: #3ea6ff;
-                    padding: 6px 10px;
-                    border-radius: 4px;
-                    font-size: 11px;
-                    font-family: monospace;
-                    z-index: 9999;
-                    border: 1px solid #3ea6ff;
-                    cursor: pointer;
-                    opacity: 0.9;
-                    transition: opacity 0.2s;
-                    white-space: nowrap;
+                    background: rgba(0, 0, 0, 0.9) !important;
+                    color: #4ade80 !important;
+                    padding: 4px 8px !important;
+                    border-radius: 4px !important;
+                    font-size: 12px !important;
+                    font-family: monospace !important;
+                    z-index: 2147483647 !important;
+                    border: 2px solid #4ade80 !important;
+                    cursor: pointer !important;
+                    opacity: 1 !important;
+                    transition: all 0.2s !important;
+                    white-space: nowrap !important;
+                    pointer-events: auto !important;
+                    user-select: none !important;
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5) !important;
                 }
 
                 .yse-debug-indicator:hover {
-                    opacity: 1;
+                    background: rgba(74, 222, 128, 0.2) !important;
+                    transform: scale(1.05) !important;
                 }
 
                 .yse-debug-indicator.hidden {
-                    display: none;
+                    display: none !important;
                 }
 
                 /* YouTube設定メニュー統合スタイル */
@@ -953,82 +954,153 @@
         },
 
         waitForCaptions() {
-            Logger.debug('字幕コンテナを監視中...');
+            console.log('[YSE] 字幕コンテナを監視中...');
             
             // 字幕コンテナの監視
             let attempts = 0;
-            const maxAttempts = 60; // 30秒間試行
+            const maxAttempts = 120; // 60秒間試行
             
             const checkInterval = setInterval(() => {
                 attempts++;
-                const captionWindow = document.querySelector('.caption-window, .ytp-caption-window');
+                
+                // 複数のセレクタを試行
+                const selectors = [
+                    '.caption-window',
+                    '.ytp-caption-window',
+                    '.ytp-caption-window-top',
+                    '.ytp-caption-window-bottom'
+                ];
+                
+                let captionWindow = null;
+                for (const selector of selectors) {
+                    captionWindow = document.querySelector(selector);
+                    if (captionWindow) {
+                        console.log(`[YSE] 字幕コンテナを発見: ${selector}`);
+                        break;
+                    }
+                }
                 
                 if (captionWindow) {
                     clearInterval(checkInterval);
-                    Logger.info('字幕コンテナを発見しました');
+                    console.log('[YSE] 字幕コンテナを発見しました');
                     this.setupCaptionObserver(captionWindow);
                 } else if (attempts >= maxAttempts) {
                     clearInterval(checkInterval);
-                    Logger.warn('字幕コンテナが見つかりませんでした');
+                    console.warn('[YSE] 字幕コンテナが見つかりませんでした（タイムアウト）');
+                }
+                
+                // 30秒ごとにログ出力
+                if (attempts % 60 === 0) {
+                    console.log(`[YSE] 字幕コンテナを検索中... (${attempts}/${maxAttempts})`);
                 }
             }, 500);
         },
 
         setupCaptionObserver(captionWindow) {
-            // 字幕テキストの変更を監視
-            this.observer = new MutationObserver((mutations) => {
-                mutations.forEach((mutation) => {
-                    if (mutation.type === 'childList' || mutation.type === 'characterData') {
-                        this.processCaptionText(captionWindow);
+            try {
+                // 既存のオブザーバーを切断
+                if (this.observer) {
+                    this.observer.disconnect();
+                }
+                
+                // 字幕テキストの変更を監視
+                this.observer = new MutationObserver((mutations) => {
+                    try {
+                        mutations.forEach((mutation) => {
+                            if (mutation.type === 'childList' || mutation.type === 'characterData') {
+                                this.processCaptionText(captionWindow);
+                            }
+                        });
+                    } catch (e) {
+                        console.error('[YSE] MutationObserverコールバックエラー:', e);
                     }
                 });
-            });
 
-            this.observer.observe(captionWindow, {
-                childList: true,
-                subtree: true,
-                characterData: true
-            });
+                this.observer.observe(captionWindow, {
+                    childList: true,
+                    subtree: true,
+                    characterData: true
+                });
 
-            Logger.info('字幕監視を開始しました');
-            
-            // 初期処理
-            this.processCaptionText(captionWindow);
-            
-            // 自動字幕選択を実行
-            if (Settings.get('enableOnLoad')) {
-                setTimeout(() => {
-                    PlayerController.autoSelectSubtitle();
-                }, 1500);
+                console.log('[YSE] 字幕監視を開始しました');
+                
+                // 初期処理
+                this.processCaptionText(captionWindow);
+                
+                // 自動字幕選択を実行
+                if (Settings.get('enableOnLoad')) {
+                    setTimeout(() => {
+                        try {
+                            PlayerController.autoSelectSubtitle();
+                        } catch (e) {
+                            console.error('[YSE] 自動字幕選択エラー:', e);
+                        }
+                    }, 1500);
+                }
+            } catch (e) {
+                console.error('[YSE] 字幕監視設定エラー:', e);
             }
         },
 
         processCaptionText(captionWindow) {
-            if (!Settings.get('sentenceMode')) return;
+            try {
+                if (!Settings.get('sentenceMode')) {
+                    console.log('[YSE] sentenceModeが無効です');
+                    return;
+                }
 
-            const captionText = captionWindow.querySelector('.captions-text');
-            if (!captionText) return;
+                const captionText = captionWindow.querySelector('.captions-text, .ytp-caption-segment');
+                if (!captionText) {
+                    // 字幕テキスト要素が見つからない場合は何もしない
+                    return;
+                }
 
-            // 文字単位のspanを文単位に再構築
-            const textNodes = captionText.querySelectorAll('span');
-            if (textNodes.length === 0) return;
+                // 文字単位のspanを文単位に再構築
+                const textNodes = captionText.querySelectorAll('span, .ytp-caption-segment');
+                if (textNodes.length === 0) {
+                    // 子要素がない場合は直接テキストを取得
+                    const text = captionText.textContent || '';
+                    if (text) {
+                        console.log('[YSE] 字幕テキスト（直接）:', text);
+                        this.processText(text);
+                    }
+                    return;
+                }
 
-            let fullText = '';
-            textNodes.forEach(node => {
-                fullText += node.textContent;
-            });
+                let fullText = '';
+                textNodes.forEach(node => {
+                    fullText += node.textContent || '';
+                });
 
-            // 文の区切りを判定（。、！、？、.、!、?）
-            const sentenceEndRegex = /[。！？.!?]+/;
-            
-            if (sentenceEndRegex.test(fullText)) {
-                // 文が完了している場合
-                this.currentSentence += fullText;
-                this.displaySentence(this.currentSentence.trim());
-                this.currentSentence = '';
-            } else {
-                // 文が続いている場合
-                this.currentSentence += fullText;
+                if (fullText) {
+                    console.log('[YSE] 字幕テキスト:', fullText);
+                    this.processText(fullText);
+                }
+            } catch (e) {
+                console.error('[YSE] 字幕処理エラー:', e);
+            }
+        },
+
+        processText(text) {
+            try {
+                // 文の区切りを判定（。、！、？、.、!、?）
+                const sentenceEndRegex = /[。！？.!?]+/;
+                
+                if (sentenceEndRegex.test(text)) {
+                    // 文が完了している場合
+                    this.currentSentence += text;
+                    const finalText = this.currentSentence.trim();
+                    if (finalText) {
+                        console.log('[YSE] 文を表示:', finalText);
+                        this.displaySentence(finalText);
+                    }
+                    this.currentSentence = '';
+                } else {
+                    // 文が続いている場合
+                    this.currentSentence += text;
+                }
+            } catch (e) {
+                console.error('[YSE] テキスト処理エラー:', e);
             }
         },
 
@@ -1619,6 +1691,12 @@
         },
 
         createIndicator() {
+            // 既に存在する場合は作成しない
+            if (document.querySelector('.yse-debug-indicator')) {
+                console.log('[YSE] インジケーターは既に存在します');
+                return;
+            }
+
             this.element = document.createElement('div');
             this.element.className = 'yse-debug-indicator';
             this.element.innerHTML = `
@@ -1629,13 +1707,18 @@
             `;
             
             // 左クリックで設定を開く
-            this.element.addEventListener('click', () => {
+            this.element.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('[YSE] インジケータークリック - 設定を開きます');
                 UIController.openSettings();
             });
             
             // 右クリックでログパネルを開く
             this.element.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
+                e.stopPropagation();
+                console.log('[YSE] インジケーター右クリック - ログパネルを開きます');
                 LogPanel.show();
             });
 
@@ -1650,25 +1733,34 @@
             ];
             
             let container = null;
+            let usedSelector = '';
             for (const selector of selectors) {
                 container = document.querySelector(selector);
                 if (container) {
-                    Logger.debug(`ヘッダーコンテナを発見: ${selector}`);
+                    usedSelector = selector;
+                    console.log(`[YSE] ヘッダーコンテナを発見: ${selector}`);
                     break;
                 }
             }
             
             if (container) {
                 // startセクションの最後に追加
-                container.appendChild(this.element);
-                this.element.style.position = 'relative';
-                this.element.style.display = 'inline-flex';
-                this.element.style.marginLeft = '16px';
-                Logger.info('デバッグインジケーターを追加しました');
+                try {
+                    container.appendChild(this.element);
+                    this.element.style.position = 'relative';
+                    this.element.style.display = 'inline-flex';
+                    this.element.style.marginLeft = '16px';
+                    this.element.style.zIndex = '10000';
+                    console.log('[YSE] デバッグインジケーターを追加しました');
+                } catch (e) {
+                    console.error('[YSE] インジケーター追加エラー:', e);
+                    // フォールバック: bodyに追加
+                    document.body.appendChild(this.element);
+                }
             } else {
                 // ヘッダーが見つからない場合は左上に固定
+                console.warn('[YSE] ヘッダーが見つからないため、bodyに追加します');
                 document.body.appendChild(this.element);
-                Logger.warn('ヘッダーが見つからないため、bodyに追加しました');
             }
         },
 
@@ -1697,46 +1789,90 @@
     // ============================================
     // 初期化
     // ============================================
-    function init() {
-        // 重複初期化防止
-        if (window.YSE_INITIALIZED) {
-            Logger.debug('既に初期化済みです');
-            return;
-        }
-        window.YSE_INITIALIZED = true;
-        
-        Logger.info('YouTube Subtitle Enhancer を起動しています...');
-        
-        Settings.init();
-        UIController.init();
-        PlayerController.init();
-
-        // デバッグモードが有効な場合
-        if (CONFIG.DEBUG) {
-            Logger.setLevel(Logger.levels.DEBUG);
-            Logger.debug('デバッグモードが有効です');
-        }
-
-        // デバッグインジケーターを表示
-        DebugIndicator.init();
-        
-        // ログパネルを初期化
-        LogPanel.init();
-        
-        // 設定の状態をログ出力
-        Logger.info('現在の設定:', {
-            preferredLanguage: Settings.get('preferredLanguage'),
-            sentenceMode: Settings.get('sentenceMode'),
-            fontSize: Settings.get('fontSize')
+    // グローバルエラーハンドリング
+    function setupErrorHandling() {
+        window.addEventListener('error', (e) => {
+            console.error('[YSE] グローバルエラー:', e.message, e.filename, e.lineno);
         });
         
-        Logger.info('初期化完了 - 左クリックで設定、右クリックでログパネル、Ctrl+Shift+Lでもログパネル');
+        window.addEventListener('unhandledrejection', (e) => {
+            console.error('[YSE] 未処理のPromise拒否:', e.reason);
+        });
+    }
+
+    function init() {
+        try {
+            // 重複初期化防止
+            if (window.YSE_INITIALIZED) {
+                console.log('[YSE] 既に初期化済みです');
+                return;
+            }
+            window.YSE_INITIALIZED = true;
+            
+            console.log('[YSE] YouTube Subtitle Enhancer を起動しています...');
+            
+            // エラーハンドリングを設定
+            setupErrorHandling();
+            
+            // 各モジュールを順番に初期化（エラーをキャッチ）
+            try {
+                Settings.init();
+                console.log('[YSE] Settings initialized');
+            } catch (e) {
+                console.error('[YSE] Settings initialization failed:', e);
+            }
+            
+            try {
+                UIController.init();
+                console.log('[YSE] UIController initialized');
+            } catch (e) {
+                console.error('[YSE] UIController initialization failed:', e);
+            }
+            
+            try {
+                PlayerController.init();
+                console.log('[YSE] PlayerController initialized');
+            } catch (e) {
+                console.error('[YSE] PlayerController initialization failed:', e);
+            }
+
+            // デバッグモードが有効な場合
+            if (CONFIG.DEBUG) {
+                Logger.setLevel(Logger.levels.DEBUG);
+                Logger.debug('デバッグモードが有効です');
+            }
+
+            // デバッグインジケーターを表示
+            try {
+                DebugIndicator.init();
+                console.log('[YSE] DebugIndicator initialized');
+            } catch (e) {
+                console.error('[YSE] DebugIndicator initialization failed:', e);
+            }
+            
+            // ログパネルを初期化
+            try {
+                LogPanel.init();
+                console.log('[YSE] LogPanel initialized');
+            } catch (e) {
+                console.error('[YSE] LogPanel initialization failed:', e);
+            }
+            
+            console.log('[YSE] 初期化完了');
+        } catch (e) {
+            console.error('[YSE] 初期化中に致命的なエラー:', e);
+        }
     }
 
     // スクリプト起動 - DOMが完全に準備できてから初期化
     function waitForInit() {
+        console.log('[YSE] 初期化を待機中... readyState:', document.readyState);
+        
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', init);
+            document.addEventListener('DOMContentLoaded', () => {
+                console.log('[YSE] DOMContentLoadedイベント発生');
+                setTimeout(init, 100);
+            });
         } else {
             // DOMContentLoaded後も少し待ってYouTubeの動的コンテンツを待つ
             setTimeout(init, 500);
@@ -1749,9 +1885,17 @@
     // フォールバック: 2秒後にも実行
     setTimeout(() => {
         if (!window.YSE_INITIALIZED) {
-            Logger.info('フォールバック初期化を実行します');
+            console.log('[YSE] フォールバック初期化を実行します');
             init();
         }
     }, 2000);
+    
+    // さらなるフォールバック: 5秒後にも実行
+    setTimeout(() => {
+        if (!window.YSE_INITIALIZED) {
+            console.log('[YSE] 最終フォールバック初期化を実行します');
+            init();
+        }
+    }, 5000);
 
 })();
